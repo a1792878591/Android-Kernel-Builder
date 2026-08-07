@@ -141,45 +141,19 @@ jobs:
             rm -rf "./drivers/kernelsu"
           fi
 
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash
+          # Switch to the official KernelSU (tiann/main) — the "magic" branch that is
+          # fully compatible with legacy 4.9 non-GKI kernels. SukiSU-Ultra v4.1.3's
+          # sulog.c needs linux/compiler_types.h (split out in 4.14) and fails to build
+          # on 4.9, hence switching back to the proven upstream KernelSU used by
+          # build_NGK-Kernel.yml.
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
 
-          # FIX: SukiSU-Ultra only defines syscall_fn_t for x86_64; arm64 build fails with
-          # "unknown type name 'syscall_fn_t'". Define it universally (matches the syscall
-          # table function-pointer signature used by hook/arm64/syscall_hook.c).
-          perl -0pi -e 's/#if defined\(__x86_64__\)\s*\n\s*typedef[^\n]*syscall_fn_t[^\n]*;\s*\n\s*#endif/typedef long (*syscall_fn_t)(const struct pt_regs *);/s' drivers/kernelsu/hook/syscall_hook.h
-          echo "=== syscall_fn_t fix applied? ==="
-          grep -n "syscall_fn_t" drivers/kernelsu/hook/syscall_hook.h | head
-
-          # FIX 2: MODULE_IMPORT_NS was introduced in Linux 5.4; kernel 4.9 lacks it,
-          # so SukiSU's MODULE_IMPORT_NS(...) calls fail to compile ("parameter list
-          # without types"). Define it as a no-op fallback at the end of export.h.
-          printf '#ifndef MODULE_IMPORT_NS\n#define MODULE_IMPORT_NS(ns)\n#endif\n' >> include/linux/export.h
-          echo "=== MODULE_IMPORT_NS fallback added to include/linux/export.h ==="
-
-          # FIX 3: include/linux/compiler_types.h was split out of compiler.h in 4.14;
-          # kernel 4.9 has NO such file, but SukiSU v4.1.3's sulog.c does
-          # `#include <linux/compiler_types.h>` -> "file not found" -> ONLY build error.
-          # Provide a shim that pulls in compiler.h (where those macros live on 4.9).
-          # Written UNCONDITIONALLY (the previous `if [ ! -f ]` gate silently failed to
-          # take effect in CI), and verified right after.
-          printf '#include <linux/compiler.h>\n' > include/linux/compiler_types.h
-          echo "=== compiler_types.h shim written ==="
-          ls -l include/linux/compiler_types.h
-
-          # FIX 4 (belt-and-suspenders): eliminate sulog.c's dependency on the split
-          # header entirely by pointing it at compiler.h directly (superset on 4.9).
-          if [ -f drivers/kernelsu/feature/sulog.c ]; then
-            perl -0pi -e 's{#include <linux/compiler_types\.h>}{#include <linux/compiler.h>}g' drivers/kernelsu/feature/sulog.c
-            echo "=== sulog.c patched to include compiler.h ==="
-            head -3 drivers/kernelsu/feature/sulog.c
-          fi
-
-          echo "=== Verify SukiSU injection ==="
+          echo "=== Verify KernelSU injection ==="
           ls -la drivers/kernelsu || echo "WARNING: kernelsu symlink not found!"
           ls -la KernelSU/kernel/ | head -5 || echo "WARNING: KernelSU/kernel/ not found!"
           grep "kernelsu" drivers/Makefile || echo "WARNING: Makefile not modified!"
           grep "kernelsu" drivers/Kconfig || echo "WARNING: Kconfig not modified!"
-          echo "=== SukiSU version ==="
+          echo "=== KernelSU version ==="
           cd KernelSU && git describe --tags 2>/dev/null || git log --oneline -1; cd ..
 
           echo -e "CONFIG_KPROBES=y" >> arch/${{ env.arch }}/configs/${{ env.DEFCONFIG_NAME }}
