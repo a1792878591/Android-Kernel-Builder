@@ -157,11 +157,21 @@ jobs:
           echo "=== MODULE_IMPORT_NS fallback added to include/linux/export.h ==="
 
           # FIX 3: include/linux/compiler_types.h was split out of compiler.h in 4.14;
-          # kernel 4.9 has no such file, but SukiSU's sulog.c includes it. Provide a
-          # shim that pulls in compiler.h (where those macros live on 4.9).
-          if [ ! -f include/linux/compiler_types.h ]; then
-            echo '#include <linux/compiler.h>' > include/linux/compiler_types.h
-            echo "=== created include/linux/compiler_types.h shim ==="
+          # kernel 4.9 has NO such file, but SukiSU v4.1.3's sulog.c does
+          # `#include <linux/compiler_types.h>` -> "file not found" -> ONLY build error.
+          # Provide a shim that pulls in compiler.h (where those macros live on 4.9).
+          # Written UNCONDITIONALLY (the previous `if [ ! -f ]` gate silently failed to
+          # take effect in CI), and verified right after.
+          printf '#include <linux/compiler.h>\n' > include/linux/compiler_types.h
+          echo "=== compiler_types.h shim written ==="
+          ls -l include/linux/compiler_types.h
+
+          # FIX 4 (belt-and-suspenders): eliminate sulog.c's dependency on the split
+          # header entirely by pointing it at compiler.h directly (superset on 4.9).
+          if [ -f drivers/kernelsu/feature/sulog.c ]; then
+            perl -0pi -e 's{#include <linux/compiler_types\.h>}{#include <linux/compiler.h>}g' drivers/kernelsu/feature/sulog.c
+            echo "=== sulog.c patched to include compiler.h ==="
+            head -3 drivers/kernelsu/feature/sulog.c
           fi
 
           echo "=== Verify SukiSU injection ==="
