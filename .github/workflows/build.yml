@@ -150,6 +150,12 @@ jobs:
           echo "=== syscall_fn_t fix applied? ==="
           grep -n "syscall_fn_t" drivers/kernelsu/hook/syscall_hook.h | head
 
+          # FIX 2: MODULE_IMPORT_NS was introduced in Linux 5.4; kernel 4.9 lacks it,
+          # so SukiSU's MODULE_IMPORT_NS(...) calls fail to compile ("parameter list
+          # without types"). Define it as a no-op fallback at the end of export.h.
+          printf '#ifndef MODULE_IMPORT_NS\n#define MODULE_IMPORT_NS(ns)\n#endif\n' >> include/linux/export.h
+          echo "=== MODULE_IMPORT_NS fallback added to include/linux/export.h ==="
+
           echo "=== Verify SukiSU injection ==="
           ls -la drivers/kernelsu || echo "WARNING: kernelsu symlink not found!"
           ls -la KernelSU/kernel/ | head -5 || echo "WARNING: KernelSU/kernel/ not found!"
