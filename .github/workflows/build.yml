@@ -247,10 +247,45 @@ jobs:
           arch: ${{ steps.generate-args.outputs.ARCH }}
           anykernel: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ env.KERNEL_NAME }}_${{ env.builddate }}"
         run: |
-          ls -al
+          echo "=== OUT_DIR boot contents ==="
+          ls -la ${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/ || echo "No boot dir"
+          echo "=== DTB files ==="
+          ls -la ${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/dts/qcom/ 2>/dev/null | head -20 || echo "No dts dir"
 
+          KERNEL_IMAGE=""
           if [ -e "${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image.gz-dtb" ]; then
-            cp -f ${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image.gz-dtb ./AnyKernel3/
+            KERNEL_IMAGE="${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image.gz-dtb"
+            echo "Found Image.gz-dtb"
+          elif [ -e "${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image.gz" ]; then
+            KERNEL_IMAGE="${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image.gz"
+            echo "Found Image.gz (appending dtb)"
+            DTB_FILE=$(find ${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/dts -name "*dipper*.dtb" 2>/dev/null | head -1)
+            [ -z "$DTB_FILE" ] && DTB_FILE=$(find ${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/dts -name "*.dtb" 2>/dev/null | head -1)
+            if [ -n "$DTB_FILE" ]; then
+              echo "Appending dtb: $DTB_FILE"
+              cat "$DTB_FILE" >> "$KERNEL_IMAGE"
+            fi
+          elif [ -e "${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image" ]; then
+            KERNEL_IMAGE="${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image"
+            echo "Found Image (gzip + append dtb)"
+            gzip -kf "$KERNEL_IMAGE" 2>/dev/null || true
+            if [ -e "${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image.gz" ]; then
+              KERNEL_IMAGE="${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image.gz"
+              DTB_FILE=$(find ${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/dts -name "*dipper*.dtb" 2>/dev/null | head -1)
+              [ -z "$DTB_FILE" ] && DTB_FILE=$(find ${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/dts -name "*.dtb" 2>/dev/null | head -1)
+              if [ -n "$DTB_FILE" ]; then
+                echo "Appending dtb: $DTB_FILE"
+                cat "$DTB_FILE" >> "$KERNEL_IMAGE"
+              fi
+            fi
+          fi
+
+          if [ -n "$KERNEL_IMAGE" ] && [ -e "$KERNEL_IMAGE" ]; then
+            cp -f "$KERNEL_IMAGE" ./AnyKernel3/Image.gz-dtb
+            echo "Copied kernel to AnyKernel3/Image.gz-dtb"
+            ls -la ./AnyKernel3/Image.gz-dtb
+          else
+            echo "ERROR: No kernel image found!"
           fi
 
           cd AnyKernel3/
@@ -261,7 +296,7 @@ jobs:
         if: ${{ env.useAnykernel == 'true' }}
         with:
           name: "${{ env.KERNEL_DEVICE }}-${{ env.KERNEL_NAME }}_${{ env.builddate }}"
-          path: AnyKernel3/*
+          path: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ env.KERNEL_NAME }}_${{ env.builddate }}.zip"
 
       - name: 🧧 Create GitHub Release => (${{ env.builddate }})
         continue-on-error: true
