@@ -143,6 +143,14 @@ jobs:
 
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash
 
+          echo "=== Verify SukiSU injection ==="
+          ls -la drivers/kernelsu || echo "WARNING: kernelsu symlink not found!"
+          ls -la KernelSU/kernel/ | head -5 || echo "WARNING: KernelSU/kernel/ not found!"
+          grep "kernelsu" drivers/Makefile || echo "WARNING: Makefile not modified!"
+          grep "kernelsu" drivers/Kconfig || echo "WARNING: Kconfig not modified!"
+          echo "=== SukiSU version ==="
+          cd KernelSU && git describe --tags 2>/dev/null || git log --oneline -1; cd ..
+
           echo -e "CONFIG_KPROBES=y" >> arch/${{ env.arch }}/configs/${{ env.DEFCONFIG_NAME }}
           echo -e "CONFIG_HAVE_KPROBES=y" >> arch/${{ env.arch }}/configs/${{ env.DEFCONFIG_NAME }}
           echo -e "CONFIG_KPROBE_EVENTS=y" >> arch/${{ env.arch }}/configs/${{ env.DEFCONFIG_NAME }}
@@ -162,12 +170,35 @@ jobs:
           make ${{ env.args }} ${{ env.DEFCONFIG_NAME }}
 
       - name: "🎶 Build kernel"
+        id: build-kernel
         working-directory: ${{ env.KERNEL_NAME }}
         env:
           args: ${{ steps.generate-args.outputs.args }}
+        continue-on-error: true
         run: |
           echo "PATH Variable: $PATH"
-          make ${args}
+          make ${args} 2>&1 | tee build.log
+
+      - name: "📋 Show build errors"
+        if: steps.build-kernel.outcome != 'success'
+        working-directory: ${{ env.KERNEL_NAME }}
+        run: |
+          echo "=== ERROR LINES ==="
+          grep -i "error:" build.log | head -50 || echo "No 'error:' lines found"
+          echo "=== LAST 80 LINES ==="
+          tail -80 build.log
+
+      - name: "📤 Upload build log on failure"
+        if: steps.build-kernel.outcome != 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-error-log
+          path: ${{ env.KERNEL_NAME }}/build.log
+          retention-days: 7
+
+      - name: "❌ Fail if build failed"
+        if: steps.build-kernel.outcome != 'success'
+        run: exit 1
 
       - name: "💛 Upload Image"
         uses: actions/upload-artifact@v4
