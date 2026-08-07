@@ -143,6 +143,13 @@ jobs:
 
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash
 
+          # FIX: SukiSU-Ultra only defines syscall_fn_t for x86_64; arm64 build fails with
+          # "unknown type name 'syscall_fn_t'". Define it universally (matches the syscall
+          # table function-pointer signature used by hook/arm64/syscall_hook.c).
+          perl -0pi -e 's/#if defined\(__x86_64__\)\s*\n\s*typedef[^\n]*syscall_fn_t[^\n]*;\s*\n\s*#endif/typedef long (*syscall_fn_t)(const struct pt_regs *);/s' drivers/kernelsu/hook/syscall_hook.h
+          echo "=== syscall_fn_t fix applied? ==="
+          grep -n "syscall_fn_t" drivers/kernelsu/hook/syscall_hook.h | head
+
           echo "=== Verify SukiSU injection ==="
           ls -la drivers/kernelsu || echo "WARNING: kernelsu symlink not found!"
           ls -la KernelSU/kernel/ | head -5 || echo "WARNING: KernelSU/kernel/ not found!"
