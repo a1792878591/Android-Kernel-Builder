@@ -156,6 +156,14 @@ jobs:
           printf '#ifndef MODULE_IMPORT_NS\n#define MODULE_IMPORT_NS(ns)\n#endif\n' >> include/linux/export.h
           echo "=== MODULE_IMPORT_NS fallback added to include/linux/export.h ==="
 
+          # FIX 3: include/linux/compiler_types.h was split out of compiler.h in 4.14;
+          # kernel 4.9 has no such file, but SukiSU's sulog.c includes it. Provide a
+          # shim that pulls in compiler.h (where those macros live on 4.9).
+          if [ ! -f include/linux/compiler_types.h ]; then
+            echo '#include <linux/compiler.h>' > include/linux/compiler_types.h
+            echo "=== created include/linux/compiler_types.h shim ==="
+          fi
+
           echo "=== Verify SukiSU injection ==="
           ls -la drivers/kernelsu || echo "WARNING: kernelsu symlink not found!"
           ls -la KernelSU/kernel/ | head -5 || echo "WARNING: KernelSU/kernel/ not found!"
